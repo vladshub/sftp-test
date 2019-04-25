@@ -1,0 +1,12 @@
+version: "3.7"
+services:
+  sftp:
+    image: atmoz/sftp
+    ports:
+      - "2222:22"
+    volumes:
+      - ./uploads:/home/foo/upload
+      - ./ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key
+      - ./ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key
+      - ./sshd_config:/etc/ssh/sshd_config
+    command: foo:pass:1001
