@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -14,7 +16,111 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+
 func main() {
+	main_sftp()
+
+}
+
+type sftpReader struct {
+	buffer []string
+	currentLocation int
+}
+
+func (s *sftpReader) Write(p []byte) (n int, err error) {
+	line := string(p)
+	if !strings.Contains(line, ">") && !strings.Contains(line, "Connected to") {
+		s.buffer = append(s.buffer, line)
+	}
+	log.Println(line)
+	return len(p), nil
+}
+
+func (s *sftpReader) ReadNext() string {
+	if len(s.buffer) > s.currentLocation {
+		defer func (){ s.currentLocation = s.currentLocation +1 }()
+		return s.buffer[s.currentLocation]
+	}
+	return ""
+}
+
+func main_sftp() {
+	sftpPath, err := exec.LookPath("sftp")
+	if err != nil {
+		log.Fatal("installing sftp is in your future\nFor osx run brew install sftp\nFor Ubuntu run apt install openssh-server")
+	}
+	log.Println("sftp is available at ", sftpPath)
+	sshpassPath, err := exec.LookPath("sshpass")
+	if err != nil {
+		log.Fatal("installing sshpass is in your future\nFor osx run brew install https://raw.githubusercontent.com/kadwanev/bigboybrew/master/Library/Formula/sshpass.rb\nFor Ubuntu run apt install sshpass")
+	}
+	log.Println("sshpass is available at ", sshpassPath)
+	cmd := exec.CommandContext(context.Background(), sshpassPath, "-p", "pass", sftpPath, "-P", "2222", "foo@127.0.0.1")
+	cmd.Env = os.Environ()
+
+	stdOut, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	stdErr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	out := io.MultiReader(stdOut, stdErr)
+
+	writeBuffer, err := cmd.StdinPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+	wpath := fmt.Sprintf("%s/downloads", dir)
+	err = os.MkdirAll(wpath, 755)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cmd.Dir = wpath
+	err = cmd.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
+	_,err = writeBuffer.Write([]byte("cd upload\n"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = writeBuffer.Write([]byte("ls\n"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = writeBuffer.Write([]byte("get example\n"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = writeBuffer.Write([]byte("exit\n"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	scanner := bufio.NewScanner(out)
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		txt := scanner.Text()
+		fmt.Println(txt)
+	}
+	err = cmd.Wait()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("done")
+}
+
+
+func native_main() {
 	//hostKey := getHostKey("127.0.0.1")
 	hostKey1, _, _, _, err := ssh.ParseAuthorizedKey([]byte("[127.0.0.1]:2222 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCaHiEzMIM/I3aCgmWk2KYK+T8FpRW1sl2a08qHTWd8sh/HNixa75z4hr5/to+8vaHyxuvkj47XYOYYZB2d7RN5AjcmGD4FMh0zFcYOHXklWLQMyaZLXMiFR+Ee/AilDomCHHA4ZVMmZV0Me6uhcRf5gzrvPsNwh6+185IhG4pv+9Al3ocBS5itViweRxYmKjGoAo4ulzqxK68HV0RyVYtV+hYvZwl6oUw/6V5DKpFDoVwgVhPdY4+Fc81QYG9Da7Bg6nC+nDCLvN0bmMKeK81YytynTrszNWAHrHFPDZAM7OgfUIZsGCoBKM3IE7x0oxv4oo6vtsHMpFAS6n7pRS1h1gLd2PwFhtvKWYwdC9re3FVY9ouvvI81aqFnhmXZKA5nrRHx01S9PqEVl6ddYKitAEzXkfQCzpFrBHoHpq3f88yzUHn2Mq62TbWz1EhONCvp7xn33MzZCzysvGLwEUBInhTTcJPzNRbJRvKb96E+iThly4Yfz/xq452l9LZFkZsBUt43BzSI2XIS9b7IxSrfW8gc8gPaoFCMJ6iKeK9s0NLWPGY5xEhZvTHwHPRMa4lC7EBsynRPnDIhgb8wRqSxA++IQnzQDW2F7u0ak/3Y8IowTBMlhl6+gPM42L2mXVlhaU5GCs11+xov2zych0ImmcydoRT9JYqlDg1dXQOnPQ=="))
 	if err != nil {

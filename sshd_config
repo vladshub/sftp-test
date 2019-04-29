@@ -21,5 +21,5 @@ ChrootDirectory %h
 # Enable this for more logs
 #LogLevel VERBOSE
 Ciphers aes128-ctr,aes192-ctr,aes256-ctr
-KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1
+KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1
 MACs hmac-sha2-256
