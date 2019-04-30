@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -16,14 +17,14 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-
 func main() {
-	main_sftp()
+	lines := run_sftp_command("ls -1")
+	fmt.Println(len(lines))
 
 }
 
 type sftpReader struct {
-	buffer []string
+	buffer          []string
 	currentLocation int
 }
 
@@ -38,16 +39,78 @@ func (s *sftpReader) Write(p []byte) (n int, err error) {
 
 func (s *sftpReader) ReadNext() string {
 	if len(s.buffer) > s.currentLocation {
-		defer func (){ s.currentLocation = s.currentLocation +1 }()
+		defer func() { s.currentLocation = s.currentLocation + 1 }()
 		return s.buffer[s.currentLocation]
 	}
 	return ""
 }
 
+func run_sftp_command(command string) []string {
+	sftpPath, err := exec.LookPath("sftp")
+	if err != nil {
+		log.Fatal("installing sftp zis in your future\nFor osx run brew install sftp\nFor Ubuntu run apt install openssh-server")
+	}
+	log.Println("sftp is available at ", sftpPath)
+	sshpassPath, err := exec.LookPath("sshpass")
+	if err != nil {
+		log.Fatal("installing sshpass is in your future\nFor osx run brew install https://raw.githubusercontent.com/kadwanev/bigboybrew/master/Library/Formula/sshpass.rb\nFor Ubuntu run apt install sshpass")
+	}
+	log.Println("sshpass is available at ", sshpassPath)
+	cmd := exec.CommandContext(context.Background(), sshpassPath, "-p", "pass", sftpPath, "-P", "2222", "foo@127.0.0.1:/upload")
+	cmd.Env = os.Environ()
+
+	stdOut, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	stdErr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	out := io.MultiReader(stdOut, stdErr)
+
+	writeBuffer, err := cmd.StdinPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+	wpath := fmt.Sprintf("%s/downloads", dir)
+	err = os.MkdirAll(wpath, 755)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cmd.Dir = wpath
+	err = cmd.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = writeBuffer.Write(append([]byte(command), '\n'))
+	_, err = writeBuffer.Write([]byte("exit\n"))
+
+	response := make([]string, 0)
+	scanner := bufio.NewScanner(out)
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		txt := scanner.Text()
+		if strings.Contains(txt, "Changing to:") || strings.Contains(txt, "Connected to") || strings.Contains(txt, ">") {
+			continue
+		}
+		response = append(response, txt)
+	}
+	err = cmd.Wait()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return response
+}
+
 func main_sftp() {
 	sftpPath, err := exec.LookPath("sftp")
 	if err != nil {
-		log.Fatal("installing sftp is in your future\nFor osx run brew install sftp\nFor Ubuntu run apt install openssh-server")
+		log.Fatal("installing sftp zis in your future\nFor osx run brew install sftp\nFor Ubuntu run apt install openssh-server")
 	}
 	log.Println("sftp is available at ", sftpPath)
 	sshpassPath, err := exec.LookPath("sshpass")
@@ -86,7 +149,7 @@ func main_sftp() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_,err = writeBuffer.Write([]byte("cd upload\n"))
+	_, err = writeBuffer.Write([]byte("cd upload\n"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -101,16 +164,29 @@ func main_sftp() {
 		log.Fatal(err)
 	}
 
+	var buf bytes.Buffer
+	tee := io.TeeReader(out, &buf)
+	data, err := ioutil.ReadAll(tee)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//scanner := bufio.NewScanner(out)
+	//scanner.Split(bufio.ScanLines)
+	//for scanner.Scan() {
+	//	txt := scanner.Text()
+	//	fmt.Println(txt)
+	//}
 	_, err = writeBuffer.Write([]byte("exit\n"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	scanner := bufio.NewScanner(out)
-	scanner.Split(bufio.ScanLines)
-	for scanner.Scan() {
-		txt := scanner.Text()
-		fmt.Println(txt)
-	}
+	//data, err := ioutil.ReadAll(out)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+
+	log.Println(string(data))
 	err = cmd.Wait()
 	if err != nil {
 		log.Fatal(err)
@@ -118,7 +194,6 @@ func main_sftp() {
 
 	log.Println("done")
 }
-
 
 func native_main() {
 	//hostKey := getHostKey("127.0.0.1")
